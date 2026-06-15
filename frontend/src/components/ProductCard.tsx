@@ -26,7 +26,11 @@ export const ProductCard: React.FC<ProductCardProps> = ({ product }) => {
         {/* Image container */}
         <div className="relative bg-gray-50 aspect-square overflow-hidden">
           <img
-            src={`/images/products/${product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.jpg`}
+            src={(() => {
+              const slug = product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+              const cdnBase = (import.meta.env.VITE_CDN_URL as string | undefined)?.replace(/\/$/, "") ?? "";
+              return cdnBase ? `${cdnBase}/products/${slug}.jpg` : `/images/products/${slug}.jpg`;
+            })()}
             alt={product.name}
             className="w-full h-full object-cover"
             loading="lazy"

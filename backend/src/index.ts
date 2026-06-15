@@ -22,16 +22,23 @@ const io = new Server(httpServer, {
 // Middleware
 app.use(helmet({ contentSecurityPolicy: false }));
 
-// CORS — allow Amplify domain + localhost in dev
+// CORS — supports comma-separated FRONTEND_URL (e.g. "https://app1.com,https://app2.com")
+// Set FRONTEND_URL=* to allow all origins
 const ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'http://localhost:5173',
-  ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+  ...(process.env.FRONTEND_URL
+    ? process.env.FRONTEND_URL.split(',').map((u) => u.trim())
+    : []),
 ];
 app.use(cors({
   origin: (origin, cb) => {
-    // Allow requests with no origin (mobile apps, curl) or allowed origins
-    if (!origin || ALLOWED_ORIGINS.includes(origin) || process.env.NODE_ENV !== 'production') {
+    if (
+      !origin ||
+      ALLOWED_ORIGINS.includes('*') ||
+      ALLOWED_ORIGINS.includes(origin) ||
+      process.env.NODE_ENV !== 'production'
+    ) {
       cb(null, true);
     } else {
       cb(new Error(`CORS blocked: ${origin}`));
