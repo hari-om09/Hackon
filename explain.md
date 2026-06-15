@@ -16,10 +16,11 @@ Amazon Now is an AI-powered quick-commerce grocery app that delivers in 9 minute
 | Frontend | React 19, TypeScript, Vite, TailwindCSS, Framer Motion |
 | State | Zustand (persisted cart, user profile, order history) |
 | Backend | Node.js, Express, TypeScript |
-| Database | MongoDB + Mongoose (text search indexes) |
+| Database | MongoDB Atlas (hosted on AWS ap-south-1) |
 | AI / LLM | Groq API (llama-3.1-8b-instant) via OpenAI-compatible client |
 | Real-time | Socket.io (order status updates) |
-| Hosting | Local dev on ports 3000 (frontend) + 3001 (backend) |
+| Image CDN | AWS S3 + CloudFront (387 product images, global CDN) |
+| Hosting | AWS EC2 (backend) + AWS Amplify (frontend) |
 
 ---
 
@@ -183,12 +184,8 @@ Standard cart with:
 
 ### 8. Product Detail Page
 
-- Product images (local slug-based + Unsplash fallback)
-- Discount badge, deal score (great/good/avg)
-- Price, MRP, unit
-- Highlights, ingredients
-- Veg/non-veg indicator
-- Add to cart button
+- Product images served from **AWS CloudFront CDN** (`d124nq9cpdz5ld.cloudfront.net/products/slug.jpg`)
+- Falls back to `imageUrls[0]` (Unsplash), then emoji placeholder
 - AI deal scoring (great = ≥40% off, good = 20–39%, avg = <20%)
 
 ---

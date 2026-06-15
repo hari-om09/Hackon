@@ -1,75 +1,120 @@
 # Deployment Guide — AWS (Amazon HackOn)
 
 ## Architecture
+
 ```
 Frontend  →  AWS Amplify        (React build, CDN, HTTPS)
-Backend   →  AWS App Runner     (Docker container, auto-scale)
-Database  →  MongoDB Atlas      (free M0 cluster, or Amazon DocumentDB)
+Backend   →  AWS EC2            (Node.js + PM2, no Docker required)
+Images    →  AWS S3 + CloudFront (387 product images, global CDN)
+Database  →  MongoDB Atlas      (hosted on AWS ap-south-1)
+AI        →  Groq API           (Llama 3.1-8b-instant)
 ```
 
 ---
 
-## Prerequisites
-- AWS account with access to Amplify + App Runner + ECR
-- AWS CLI installed: `brew install awscli` → `aws configure`
-- Docker installed
-- MongoDB Atlas cluster (or DocumentDB) with connection string ready
+## Option A — Deploy Backend to EC2 (Recommended — No Docker Needed)
+
+### A.1 Launch EC2 Instance
+
+1. Go to **AWS Console → EC2 → Launch Instance**
+2. OS: **Ubuntu 24.04 LTS**
+3. Instance type: `t2.micro` or `t3.micro`
+4. Create a key pair (e.g., `hackon-key.pem`) and download it
+5. Security Group — open these ports:
+   - SSH (22)
+   - HTTP (80)
+   - Custom TCP: **3001** (from `0.0.0.0/0`)
+
+### A.2 SSH into EC2
+
+```bash
+chmod 400 hackon-key.pem
+ssh -i hackon-key.pem ubuntu@YOUR_EC2_PUBLIC_IP
+```
+
+### A.3 Install Node.js & PM2
+
+```bash
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+sudo npm install -g pm2
+```
+
+### A.4 Clone & Configure
+
+```bash
+git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git
+cd YOUR_REPO/backend
+
+# Create .env from the example
+cp .env.example .env
+nano .env
+```
+
+Fill in your real values (MongoDB URI, Groq key, AWS credentials, etc.).
+
+### A.5 Install, Build & Start
+
+```bash
+npm install
+npm run build
+pm2 start dist/index.js --name "amazon-now-backend"
+pm2 save
+pm2 startup  # auto-start on server reboot
+```
+
+### A.6 Test it
+
+```bash
+curl http://YOUR_EC2_PUBLIC_IP:3001/health
+# → {"status":"ok","time":"..."}
+```
 
 ---
 
-## Part 1 — Deploy Backend to AWS App Runner
+## Option B — Deploy Backend via Docker to App Runner
 
-### 1.1 Push Docker image to Amazon ECR
+> Use this only if you prefer a fully managed container approach.
+
+### B.1 Push Docker image to Amazon ECR
 
 ```bash
-# Create ECR repository
 aws ecr create-repository --repository-name amazon-now-backend --region ap-south-1
 
-# Get the login command (replace 123456789 with your AWS account ID)
 aws ecr get-login-password --region ap-south-1 | \
   docker login --username AWS --password-stdin 123456789.dkr.ecr.ap-south-1.amazonaws.com
 
-# Build and push
 cd backend
 docker build -t amazon-now-backend .
 docker tag amazon-now-backend:latest 123456789.dkr.ecr.ap-south-1.amazonaws.com/amazon-now-backend:latest
 docker push 123456789.dkr.ecr.ap-south-1.amazonaws.com/amazon-now-backend:latest
 ```
 
-### 1.2 Create App Runner service
+### B.2 Create App Runner Service
 
 1. Go to **AWS Console → App Runner → Create service**
 2. Source: **Container registry → Amazon ECR**
-3. Select your `amazon-now-backend` image
-4. Configure:
-   - CPU: 1 vCPU, Memory: 2 GB
-   - Port: **3001**
-   - Health check path: `/health`
-5. **Environment variables** (add all of these):
+3. Port: **3001**, Health check: `/health`
+4. Add Environment Variables:
 
 | Key | Value |
 |-----|-------|
 | `NODE_ENV` | `production` |
 | `PORT` | `3001` |
 | `MONGO_URI` | `mongodb+srv://user:pass@cluster.mongodb.net/amazon-now` |
-| `GROQ_API_KEY` | `gsk_...your key...` |
+| `GROQ_API_KEY` | `gsk_...` |
 | `GROQ_MODEL` | `llama-3.1-8b-instant` |
-| `FRONTEND_URL` | *(leave blank for now, fill after Amplify deploy)* |
-
-6. Click **Create & deploy** — App Runner builds and gives you a URL like:
-   `https://abc123.ap-south-1.awsapprunner.com`
-
-7. Test it:
-```bash
-curl https://abc123.ap-south-1.awsapprunner.com/health
-# → {"status":"ok","time":"..."}
-```
+| `AWS_ACCESS_KEY_ID` | Your IAM key |
+| `AWS_SECRET_ACCESS_KEY` | Your IAM secret |
+| `AWS_REGION` | `ap-south-1` |
+| `S3_MEDIA_BUCKET` | `amzn-now-hackon` |
+| `CLOUDFRONT_URL` | `https://d124nq9cpdz5ld.cloudfront.net` |
 
 ---
 
 ## Part 2 — Seed the Database
 
-Run this once against your production MongoDB:
+Run once against your production MongoDB:
 
 ```bash
 cd backend
@@ -80,19 +125,19 @@ MONGO_URI="mongodb+srv://user:pass@cluster.mongodb.net/amazon-now" npm run seed
 
 ## Part 3 — Deploy Frontend to AWS Amplify
 
-### 3.1 Set the backend URL
+### 3.1 Set production environment variables
 
-Create `frontend/.env.production`:
-```
-VITE_API_URL=https://abc123.ap-south-1.awsapprunner.com/api
+Edit `frontend/.env.production`:
+```env
+VITE_CDN_URL=https://d124nq9cpdz5ld.cloudfront.net
+VITE_API_URL=http://YOUR_EC2_PUBLIC_IP:3001/api
 ```
 
 ### 3.2 Connect via Amplify Console
 
 1. Go to **AWS Console → Amplify → New app → Host web app**
-2. Connect your **GitHub repository** (push code to GitHub first if not done)
-3. Branch: `main`
-4. Build settings — Amplify auto-detects Vite. Verify:
+2. Connect your **GitHub repository**, branch: `main`
+3. Build settings (Amplify auto-detects Vite):
 
 ```yaml
 version: 1
@@ -113,70 +158,56 @@ frontend:
       - frontend/node_modules/**/*
 ```
 
-5. **Environment variables** in Amplify console:
-   - `VITE_API_URL` = `https://abc123.ap-south-1.awsapprunner.com/api`
+4. Add **Environment Variables** in Amplify console:
+   - `VITE_CDN_URL` = `https://d124nq9cpdz5ld.cloudfront.net`
+   - `VITE_API_URL` = `http://YOUR_EC2_PUBLIC_IP:3001/api`
 
-6. Click **Save and deploy** — Amplify builds and gives you:
-   `https://main.abcdef.amplifyapp.com`
+5. Click **Save and deploy**
 
-### 3.3 Add CORS to backend
+### 3.3 Update CORS on backend
 
-Update `backend/src/index.ts` — replace the open CORS with your Amplify URL:
+Add your Amplify URL to the `FRONTEND_URL` env var on EC2:
+```bash
+# On EC2, edit .env:
+FRONTEND_URL=https://main.abcdef.amplifyapp.com
 
-```ts
-app.use(cors({
-  origin: [
-    'https://main.abcdef.amplifyapp.com',
-    'http://localhost:3000',
-  ],
-  credentials: true,
-}));
+# Rebuild and restart
+npm run build && pm2 restart amazon-now-backend
 ```
 
-Then rebuild and push the Docker image again (repeat Part 1.1).
+---
 
-### 3.4 Update App Runner env
+## Part 4 — Images (S3 + CloudFront)
 
-In App Runner → your service → Configuration → Environment variables:
-- `FRONTEND_URL` = `https://main.abcdef.amplifyapp.com`
+Product images are already uploaded to S3 and served via CloudFront. No action needed.
+
+To re-upload if needed:
+```bash
+aws s3 sync frontend/public/images/products s3://amzn-now-hackon/products/ \
+  --region ap-south-1 \
+  --cache-control "public, max-age=31536000"
+```
 
 ---
 
-## Part 4 — Custom Domain (Optional)
-
-In Amplify → Domain management → Add domain → connect your domain.
-App Runner also supports custom domains under Networking → Custom domains.
-
----
-
-## Quick Reference: URLs after deploy
+## Quick Reference After Deploy
 
 | Service | URL |
 |---------|-----|
 | Frontend | `https://main.abcdef.amplifyapp.com` |
-| Backend API | `https://abc123.ap-south-1.awsapprunner.com/api` |
-| Health check | `https://abc123.ap-south-1.awsapprunner.com/health` |
+| Backend API | `http://YOUR_EC2_IP:3001/api` |
+| Health check | `http://YOUR_EC2_IP:3001/health` |
+| Image CDN | `https://d124nq9cpdz5ld.cloudfront.net/products/` |
 
 ---
 
-## Cost Estimate (Free / Very Low)
+## Cost Estimate
 
 | Service | Cost |
 |---------|------|
-| AWS Amplify | Free tier — 1000 build mins/month, 5 GB storage, 15 GB transfer |
-| AWS App Runner | ~$0.064/vCPU-hr + $0.007/GB-hr. Pauses when idle → ~$1-3/day for a hackathon demo |
+| AWS EC2 t2.micro | Free tier — 750 hrs/month |
+| AWS Amplify | Free tier — 1000 build mins/month |
+| AWS S3 + CloudFront | Near zero for hackathon traffic |
 | MongoDB Atlas M0 | Free forever (512 MB) |
-| Amazon ECR | Free tier — 500 MB/month |
 
-For a hackathon demo running a few days, total cost is under **$5**.
-
----
-
-## Fastest Path for Demo Day
-
-If you need it live in 30 minutes:
-1. Push code to GitHub
-2. Deploy backend via App Runner (10 min)
-3. Deploy frontend via Amplify (5 min)
-4. Seed DB (2 min)
-5. Done ✅
+**Total cost for hackathon demo: ~$0**

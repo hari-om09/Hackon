@@ -1,11 +1,24 @@
-import React, { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ChevronLeft, ChevronRight, Star, Leaf } from 'lucide-react';
-import { fetchProduct } from '../api/client';
-import { AddButton } from '../components/AddButton';
-import { useCartStore } from '../store/cartStore';
+import React, { useState } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowLeft, ChevronLeft, ChevronRight, Star, Leaf } from "lucide-react";
+import { fetchProduct } from "../api/client";
+import { AddButton } from "../components/AddButton";
+import { useCartStore } from "../store/cartStore";
+
+const CDN_BASE =
+  (import.meta.env.VITE_CDN_URL as string | undefined)?.replace(/\/$/, "") ??
+  "";
+function getProductImageUrl(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return CDN_BASE
+    ? `${CDN_BASE}/products/${slug}.jpg`
+    : `/images/products/${slug}.jpg`;
+}
 
 export const ProductDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -14,7 +27,7 @@ export const ProductDetail: React.FC = () => {
   const addToCart = useCartStore((s) => s.addToCart);
 
   const { data: product, isLoading } = useQuery({
-    queryKey: ['product', id],
+    queryKey: ["product", id],
     queryFn: () => fetchProduct(id!),
     enabled: !!id,
   });
@@ -39,7 +52,9 @@ export const ProductDetail: React.FC = () => {
         <button onClick={() => navigate(-1)} className="text-gray-700">
           <ArrowLeft size={20} />
         </button>
-        <span className="text-gray-900 font-semibold text-sm truncate flex-1">{product.name}</span>
+        <span className="text-gray-900 font-semibold text-sm truncate flex-1">
+          {product.name}
+        </span>
       </div>
 
       {/* Image carousel */}
@@ -47,7 +62,11 @@ export const ProductDetail: React.FC = () => {
         <AnimatePresence mode="wait">
           <motion.img
             key={imageIdx}
-            src={imageIdx === 0 ? `/images/products/${product.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}.jpg` : product.imageUrls[imageIdx]}
+            src={
+              imageIdx === 0
+                ? getProductImageUrl(product.name)
+                : product.imageUrls[imageIdx]
+            }
             alt={product.name}
             className="w-full h-full object-cover"
             initial={{ opacity: 0, x: 40 }}
@@ -57,10 +76,11 @@ export const ProductDetail: React.FC = () => {
             onError={(e) => {
               const img = e.target as HTMLImageElement;
               if (!img.dataset.fallback) {
-                img.dataset.fallback = '1';
-                img.src = product.imageUrls[imageIdx] || product.imageUrls[0] || '';
+                img.dataset.fallback = "1";
+                img.src =
+                  product.imageUrls[imageIdx] || product.imageUrls[0] || "";
               } else {
-                img.src = 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=400&q=80';
+                img.style.display = "none"; // hide broken img, let parent show emoji via bg
               }
             }}
           />
@@ -74,12 +94,14 @@ export const ProductDetail: React.FC = () => {
         )}
 
         {/* Veg indicator */}
-        <div className={`absolute top-3 right-3 border-2 rounded px-1.5 py-0.5 text-xs font-bold ${product.isVeg ? 'border-green-600 text-green-700 bg-white' : 'border-red-600 text-red-700 bg-white'}`}>
-          {product.isVeg ? '🟢 VEG' : '🔴 NON-VEG'}
+        <div
+          className={`absolute top-3 right-3 border-2 rounded px-1.5 py-0.5 text-xs font-bold ${product.isVeg ? "border-green-600 text-green-700 bg-white" : "border-red-600 text-red-700 bg-white"}`}
+        >
+          {product.isVeg ? "🟢 VEG" : "🔴 NON-VEG"}
         </div>
 
         {/* Deal score */}
-        {product.dealScore === 'great' && (
+        {product.dealScore === "great" && (
           <div className="absolute bottom-3 left-3 bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full">
             🔥 Great Deal
           </div>
@@ -92,7 +114,7 @@ export const ProductDetail: React.FC = () => {
               <button
                 key={i}
                 onClick={() => setImageIdx(i)}
-                className={`w-2 h-2 rounded-full transition-all ${i === imageIdx ? 'bg-[#FF9900] w-4' : 'bg-white/60'}`}
+                className={`w-2 h-2 rounded-full transition-all ${i === imageIdx ? "bg-[#FF9900] w-4" : "bg-white/60"}`}
               />
             ))}
           </div>
@@ -109,7 +131,11 @@ export const ProductDetail: React.FC = () => {
             </button>
             <button
               className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-white/80 rounded-full flex items-center justify-center shadow"
-              onClick={() => setImageIdx(Math.min(product.imageUrls.length - 1, imageIdx + 1))}
+              onClick={() =>
+                setImageIdx(
+                  Math.min(product.imageUrls.length - 1, imageIdx + 1),
+                )
+              }
             >
               <ChevronRight size={16} />
             </button>
@@ -121,8 +147,12 @@ export const ProductDetail: React.FC = () => {
       <div className="px-4 py-4 space-y-4">
         {/* Brand + name */}
         <div>
-          <p className="text-xs text-[#008296] font-semibold uppercase tracking-wide">{product.brand}</p>
-          <h1 className="text-lg font-bold text-gray-900 leading-tight">{product.name}</h1>
+          <p className="text-xs text-[#008296] font-semibold uppercase tracking-wide">
+            {product.brand}
+          </p>
+          <h1 className="text-lg font-bold text-gray-900 leading-tight">
+            {product.name}
+          </h1>
           <p className="text-sm text-gray-500 mt-0.5">{product.unit}</p>
         </div>
 
@@ -132,25 +162,42 @@ export const ProductDetail: React.FC = () => {
             <Star size={12} fill="white" />
             {product.rating.avg}
           </div>
-          <span className="text-sm text-gray-500">{product.rating.count.toLocaleString()} ratings</span>
-          {product.tags.includes('steal-deal') && <span className="steal-deal-badge">Steal Deal</span>}
-          {product.tags.includes('farm-loot') && <span className="steal-deal-badge">Farm Loot</span>}
+          <span className="text-sm text-gray-500">
+            {product.rating.count.toLocaleString()} ratings
+          </span>
+          {product.tags.includes("steal-deal") && (
+            <span className="steal-deal-badge">Steal Deal</span>
+          )}
+          {product.tags.includes("farm-loot") && (
+            <span className="steal-deal-badge">Farm Loot</span>
+          )}
         </div>
 
         {/* Price */}
         <div className="bg-green-50 rounded-xl p-3">
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-gray-900">₹{product.price}</span>
+            <span className="text-2xl font-black text-gray-900">
+              ₹{product.price}
+            </span>
             {product.mrp > product.price && (
-              <span className="text-base text-gray-400 line-through">₹{product.mrp}</span>
+              <span className="text-base text-gray-400 line-through">
+                ₹{product.mrp}
+              </span>
             )}
             {product.discountPercent > 0 && (
-              <span className="text-sm font-bold text-green-600">{product.discountPercent}% off</span>
+              <span className="text-sm font-bold text-green-600">
+                {product.discountPercent}% off
+              </span>
             )}
           </div>
           <p className="text-xs text-gray-500 mt-1">
-            ₹{(product.price / parseFloat(product.unit.replace(/[^0-9.]/g, '') || '1')).toFixed(1)}/
-            {product.unit.replace(/[0-9.]/g, '').trim() || 'unit'} • Inclusive of all taxes
+            ₹
+            {(
+              product.price /
+              parseFloat(product.unit.replace(/[^0-9.]/g, "") || "1")
+            ).toFixed(1)}
+            /{product.unit.replace(/[0-9.]/g, "").trim() || "unit"} • Inclusive
+            of all taxes
           </p>
         </div>
 
@@ -162,7 +209,10 @@ export const ProductDetail: React.FC = () => {
             </h3>
             <ul className="space-y-1">
               {product.highlights.map((h, i) => (
-                <li key={i} className="flex items-start gap-2 text-sm text-gray-700">
+                <li
+                  key={i}
+                  className="flex items-start gap-2 text-sm text-gray-700"
+                >
                   <span className="text-green-500 mt-0.5">✓</span>
                   {h}
                 </li>
@@ -174,7 +224,9 @@ export const ProductDetail: React.FC = () => {
         {/* Ingredients */}
         {product.ingredients && (
           <div>
-            <h3 className="text-sm font-bold text-gray-800 mb-1">Ingredients</h3>
+            <h3 className="text-sm font-bold text-gray-800 mb-1">
+              Ingredients
+            </h3>
             <p className="text-sm text-gray-600">{product.ingredients}</p>
           </div>
         )}
@@ -183,13 +235,18 @@ export const ProductDetail: React.FC = () => {
         {product.expiryMonths > 0 && (
           <div className="flex items-center gap-2 text-sm text-gray-500">
             <span>📅</span>
-            <span>Best before: {product.expiryMonths} months from manufacture</span>
+            <span>
+              Best before: {product.expiryMonths} months from manufacture
+            </span>
           </div>
         )}
 
         {/* Seller info */}
         <div className="text-xs text-gray-400 border-t border-gray-100 pt-3">
-          Sold by: <span className="font-medium text-gray-600">Amazon Seller Services Pvt. Ltd.</span>
+          Sold by:{" "}
+          <span className="font-medium text-gray-600">
+            Amazon Seller Services Pvt. Ltd.
+          </span>
         </div>
       </div>
 
